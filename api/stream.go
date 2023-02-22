@@ -16,6 +16,18 @@ import (
 	"github.com/lehoon/hook_api/v2/service"
 )
 
+func StreamList(w http.ResponseWriter, r *http.Request) {
+	resultList, err := service.QueryStreamList()
+	if err != nil {
+		logger.Log().Errorf("查询流列表失败, %s", err.Error())
+		render.Render(w, r, FailureBizResultWithDatabaseError())
+		return
+	}
+
+	logger.Log().Info("查询流列表成功")
+	render.Respond(w, r, SuccessBizResultWithData(resultList))
+}
+
 // 检查流是否存在
 func StreamIsOnline(w http.ResponseWriter, r *http.Request) {
 	streamId := chi.URLParam(r, "streamId")
@@ -49,15 +61,15 @@ func StreamPlayUrl(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//校验流编号在数据库是否已存在
-	deviceInfo, err := service.QueryDeviceByStreamId(streamId)
-	if err != nil || deviceInfo == nil {
+	streamInfo, err := service.QueryStreamByStreamId(streamId)
+	if err != nil || streamInfo == nil {
 		logger.Log().Errorf("查询流播放地址失败, %s, %s", streamId, err.Error())
 		render.Respond(w, r, FailureBizResultWithStreamNotExists())
 		return
 	}
 
 	logger.Log().Infof("查询流播放地址成功, %s", streamId)
-	render.Respond(w, r, SuccessBizResultWithData("http://"+config.GetRestAddress()+"/"+deviceInfo.AppName+"/"+deviceInfo.StreamId))
+	render.Respond(w, r, SuccessBizResultWithData(streamInfo.PlayUrl()))
 }
 
 // 打开指定流
@@ -75,8 +87,8 @@ func StreamOpen(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//校验流编号在数据库是否已存在
-	deviceInfo, err := service.QueryDeviceByStreamId(streamId)
-	if err != nil || deviceInfo == nil {
+	streamInfo, err := service.QueryStreamByStreamId(streamId)
+	if err != nil || streamInfo == nil {
 		logger.Log().Errorf("打开流失败, %s, %s", streamId, err.Error())
 		render.Respond(w, r, FailureBizResultWithStreamNotExists())
 		return
@@ -163,13 +175,13 @@ func StreamNoneReader(w http.ResponseWriter, r *http.Request) {
 // 发送拉流请求
 func invokePullStream(request *message.StreamNotFoundBind) error {
 	//根据stream 查询设备信息
-	deviceInfo, err := service.QueryDeviceByStreamId(request.Stream)
-	if err != nil || deviceInfo == nil {
+	streamInfo, err := service.QueryStreamByStreamId(request.Stream)
+	if err != nil || streamInfo == nil {
 		logger.Log().Errorf("发送拉流请求失败, %s, %s", request.Stream, err.Error())
 		return errors.New("发送拉流请求失败,未找到流的配置信息")
 	}
 
-	if len(request.App) != 0 && strings.Compare(request.App, deviceInfo.AppName) != 0 {
+	if len(request.App) != 0 && strings.Compare(request.App, streamInfo.AppName) != 0 {
 		logger.Log().Errorf("发送拉流请求失败, 流配置信息和数据库配置信息不一致%s", request.Stream)
 		return errors.New("发送拉流请求失败,未找到流的配置信息")
 	}
@@ -178,7 +190,7 @@ func invokePullStream(request *message.StreamNotFoundBind) error {
 	builder.WriteString(config.GetRestUrl())
 	builder.WriteString("addStreamProxy?secret=")
 	builder.WriteString(config.GetServerSecret())
-	builder.WriteString(deviceInfo.PullStreamKey())
+	builder.WriteString(streamInfo.PullStreamKey())
 	logger.Log().Infof("发送拉流请求, %s", builder.String())
 	rsp, err := restapi.PostUrl(builder.String())
 	if err != nil {
@@ -186,6 +198,7 @@ func invokePullStream(request *message.StreamNotFoundBind) error {
 		return errors.New("发送拉流请求失败,网络请求失败")
 	}
 
+	logger.Log().Infof("发起拉流请求,%s", builder.String())
 	logger.Log().Infof("发送拉流请求,接收到响应报文:%s", rsp)
 	return nil
 }
@@ -193,8 +206,8 @@ func invokePullStream(request *message.StreamNotFoundBind) error {
 // 发送关闭流请求
 func invokeStreamClose(streamId string) {
 	//校验流编号在数据库是否已存在
-	deviceInfo, err := service.QueryDeviceByStreamId(streamId)
-	if err != nil || deviceInfo == nil {
+	streamInfo, err := service.QueryStreamByStreamId(streamId)
+	if err != nil || streamInfo == nil {
 		logger.Log().Errorf("发送关闭流请求失败, %s, %s", streamId, err.Error())
 		return
 	}
@@ -204,7 +217,7 @@ func invokeStreamClose(streamId string) {
 	builder.WriteString("delStreamProxy?secret=")
 	builder.WriteString(config.GetServerSecret())
 	builder.WriteString("&key=")
-	builder.WriteString(deviceInfo.CloseKey())
+	builder.WriteString(streamInfo.CloseKey())
 	logger.Log().Infof("发送关闭流请求, %s", builder.String())
 	rsp, err := restapi.Get(builder.String())
 	if err != nil {
@@ -217,8 +230,8 @@ func invokeStreamClose(streamId string) {
 // 检查流是否在线
 func invokeStreamIsOnline(streamId string) (bool, error) {
 	//校验流编号在数据库是否已存在
-	deviceInfo, err := service.QueryDeviceByStreamId(streamId)
-	if err != nil || deviceInfo == nil {
+	streamInfo, err := service.QueryStreamByStreamId(streamId)
+	if err != nil || streamInfo == nil {
 		logger.Log().Errorf("检查流是否在线失败, %s, %s", streamId, err.Error())
 		return false, errors.New("查询流关联的设备信息失败")
 	}
@@ -228,7 +241,7 @@ func invokeStreamIsOnline(streamId string) (bool, error) {
 	builder.WriteString("isMediaOnline?secret=")
 	builder.WriteString(config.GetServerSecret())
 	builder.WriteString("&schema=rtsp&")
-	builder.WriteString(deviceInfo.IsOnlineKey())
+	builder.WriteString(streamInfo.IsOnlineKey())
 	logger.Log().Infof("发送查询流是否在线请求, %s", builder.String())
 	rsp, err := restapi.Get(builder.String())
 	if err != nil {

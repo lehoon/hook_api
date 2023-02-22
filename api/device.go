@@ -18,7 +18,7 @@ func QueryDeviceInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deviceInfo, err := service.QueryDeviceByStreamId(streamId)
+	deviceInfo, err := service.QueryDeviceByDeviceId(streamId)
 
 	if err != nil {
 		logger.Log().Errorf("查询设备失败, 请稍后重试")
@@ -39,7 +39,7 @@ func PublishDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deviceInfo, _ := service.QueryDeviceByStreamId(request.StreamId)
+	deviceInfo, _ := service.QueryDeviceByDeviceId(request.DeviceId)
 
 	if deviceInfo != nil {
 		logger.Log().Error("新增设备信息失败,数据已存在")

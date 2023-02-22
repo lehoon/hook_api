@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/lehoon/hook_api/v2/library/config"
 )
 
 type Message struct {
@@ -72,7 +74,7 @@ func (a *KeepAliveReportBind) Bind(r *http.Request) error {
 
 // 设备信息
 type DeviceInfo struct {
-	StreamId  string `json:"streamId"`
+	DeviceId  string `json:"deviceId"`
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	Hostname  string `json:"hostname"`
@@ -85,10 +87,32 @@ func (d *DeviceInfo) IsEmpty() bool {
 }
 
 func (d *DeviceInfo) CanPublish() bool {
-	return len(d.AppName) > 0 && len(d.Hostname) > 0 && len(d.VHostName) > 0 && len(d.Password) > 0 && len(d.StreamId) > 0
+	return len(d.AppName) > 0 && len(d.Hostname) > 0 && len(d.VHostName) > 0 && len(d.Password) > 0 && len(d.DeviceId) > 0
 }
 
-func (d *DeviceInfo) PullStreamKey() string {
+type DeviceInfoBind struct {
+	*DeviceInfo
+}
+
+func (a *DeviceInfoBind) Bind(r *http.Request) error {
+	if a.DeviceInfo == nil {
+		return errors.New("没有找到请求参数")
+	}
+
+	return nil
+}
+
+// 流信息
+type StreamInfo struct {
+	StreamId  string `json:"streamId"`
+	Username  string `json:"-"` //`json:"username"`
+	Password  string `json:"-"` //`json:"password"`
+	Hostname  string `json:"-"` //`json:"hostname"`
+	AppName   string `json:"appName"`
+	VHostName string `json:"-"` //`json:"vhostName"`
+}
+
+func (d *StreamInfo) PullStreamKey() string {
 	var builder strings.Builder
 	builder.WriteString("&vhost=")
 	builder.WriteString(d.VHostName)
@@ -102,10 +126,12 @@ func (d *DeviceInfo) PullStreamKey() string {
 	builder.WriteString(d.Password)
 	builder.WriteString("@")
 	builder.WriteString(d.Hostname)
+	builder.WriteString("&enable_rtmp=1")
+	builder.WriteString("&enable_audio=0")
 	return builder.String()
 }
 
-func (d *DeviceInfo) IsOnlineKey() string {
+func (d *StreamInfo) IsOnlineKey() string {
 	var builder strings.Builder
 	builder.WriteString("vhost=")
 	builder.WriteString(d.VHostName)
@@ -116,7 +142,7 @@ func (d *DeviceInfo) IsOnlineKey() string {
 	return builder.String()
 }
 
-func (d *DeviceInfo) CloseKey() string {
+func (d *StreamInfo) CloseKey() string {
 	var builder strings.Builder
 	builder.WriteString(d.VHostName)
 	builder.WriteString("/")
@@ -126,16 +152,11 @@ func (d *DeviceInfo) CloseKey() string {
 	return builder.String()
 }
 
-type DeviceInfoBind struct {
-	*DeviceInfo
-}
-
-func (a *DeviceInfoBind) Bind(r *http.Request) error {
-	if a.DeviceInfo == nil {
-		return errors.New("没有找到请求参数")
-	}
-
-	return nil
+func (d *StreamInfo) PlayUrl() []string {
+	var result []string
+	result = append(result, "rtsp://"+config.GetRestAddress()+"/"+d.AppName+"/"+d.StreamId)
+	result = append(result, "http://"+config.GetRestAddress()+"/live/"+d.StreamId+".live.flv")
+	return result
 }
 
 // 检查流是否在线响应消息

@@ -32,6 +32,7 @@ func Routes() http.Handler {
 	r := chi.NewRouter()
 
 	r.Route("/stream", func(r chi.Router) {
+		r.Get("/", api.StreamList)
 		r.Post("/not_found", api.StreamNotFound)
 		r.Post("/change", api.StreamChanged)
 		r.Post("/none_reader", api.StreamNoneReader)

@@ -14,36 +14,35 @@ func init() {
 	logger.Log().Info("device service initialized")
 }
 
-// 根据streamid查询deviceinfo信息
-func QueryDeviceByStreamId(streamId string) (*message.DeviceInfo, error) {
+// 根据deviceid查询deviceinfo信息
+func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 	if !database.IsOpen() {
 		return nil, errors.New("数据库未打开,查询失败")
 	}
 
-	stmt, err := database.Instance().Prepare("select streamid,username,password,hostname,vhostname,appname from device_info where streamid = ?")
+	stmt, err := database.Instance().Prepare("select username,password,hostname,vhostname,appname from device_info where deviceid = ?")
 	if err != nil {
 		logger.Log().Errorf("查询设备出错,%s", err.Error())
 		return nil, errors.New("查询设备出错,请稍后重试")
 	}
 
 	defer stmt.Close()
-	row := stmt.QueryRow(streamId)
+	row := stmt.QueryRow(deviceid)
 
-	var streamid string
 	var username string
 	var password string
 	var hostname string
 	var appname string
 	var vhostname string
-	err = row.Scan(&streamid, &username, &password, &hostname, &vhostname, &appname)
+	err = row.Scan(&username, &password, &hostname, &vhostname, &appname)
 
 	if err != nil {
-		logger.Log().Errorf("查询设备数据失败,%s,%s", streamId, err.Error())
+		logger.Log().Errorf("查询设备数据失败,%s,%s", deviceid, err.Error())
 		return nil, errors.New("要查询的设备不存在")
 	}
 
 	return &message.DeviceInfo{
-		StreamId:  streamid,
+		DeviceId:  deviceid,
 		Username:  username,
 		Password:  password,
 		Hostname:  hostname,
@@ -58,7 +57,7 @@ func InsertDeviceInfo(deviceInfo *message.DeviceInfo) error {
 		return errors.New("数据库未打开,新增失败")
 	}
 	//添加新的数据
-	insertSql := `insert into device_info(streamid,username,password,hostname,vhostname,appname,created) values(?,?,?,?,?,?,datetime('now','localtime'))`
+	insertSql := `insert into device_info(deviceid,username,password,hostname,vhostname,appname,created) values(?,?,?,?,?,?,datetime('now','localtime'))`
 	insertStmt, err := database.Instance().Prepare(insertSql)
 	if err != nil {
 		logger.Log().Errorf("新增设备失败,%s,%s", utils.JsonString(deviceInfo), err.Error())
@@ -66,7 +65,7 @@ func InsertDeviceInfo(deviceInfo *message.DeviceInfo) error {
 	}
 
 	defer insertStmt.Close()
-	_, err = insertStmt.Exec(deviceInfo.StreamId, deviceInfo.Username, deviceInfo.Password, deviceInfo.Hostname, deviceInfo.VHostName, deviceInfo.AppName)
+	_, err = insertStmt.Exec(deviceInfo.DeviceId, deviceInfo.Username, deviceInfo.Password, deviceInfo.Hostname, deviceInfo.VHostName, deviceInfo.AppName)
 	if err != nil {
 		logger.Log().Errorf("新增设备数据失败,%s,%s", utils.JsonString(deviceInfo), err.Error())
 		return errors.New("新增设备失败,请稍后重试")
@@ -75,7 +74,7 @@ func InsertDeviceInfo(deviceInfo *message.DeviceInfo) error {
 }
 
 // 删除device info
-func DeleteDeviceInfo(streamId string) error {
+func DeleteDeviceInfo(deviceId string) error {
 	if !database.IsOpen() {
 		return errors.New("数据库未打开,删除失败")
 	}
@@ -83,13 +82,13 @@ func DeleteDeviceInfo(streamId string) error {
 	deleteSql := `delete from device_info where streamid = ?`
 	deleteStmt, err := database.Instance().Prepare(deleteSql)
 	if err != nil {
-		logger.Log().Errorf("删除设备失败,%s,%s", streamId, err.Error())
+		logger.Log().Errorf("删除设备失败,%s,%s", deviceId, err.Error())
 		return errors.New("删除设备失败,请稍后重试")
 	}
 	defer deleteStmt.Close()
-	_, err = deleteStmt.Exec(streamId)
+	_, err = deleteStmt.Exec(deviceId)
 	if err != nil {
-		logger.Log().Errorf("删除设备数据失败,%s, %s", streamId, err.Error())
+		logger.Log().Errorf("删除设备数据失败,%s, %s", deviceId, err.Error())
 		return errors.New("删除设备失败,请稍后重试")
 	}
 	return nil
@@ -97,7 +96,7 @@ func DeleteDeviceInfo(streamId string) error {
 
 // 更新设备信息
 func UpdateDeviceInfo(deviceInfo *message.DeviceInfo) error {
-	device, err := QueryDeviceByStreamId(deviceInfo.StreamId)
+	device, err := QueryDeviceByDeviceId(deviceInfo.DeviceId)
 
 	if err != nil || device == nil {
 		logger.Log().Error("更新设备失败, %s, %s", utils.JsonString(deviceInfo), err.Error())
@@ -125,7 +124,7 @@ func UpdateDeviceInfo(deviceInfo *message.DeviceInfo) error {
 	}
 
 	//更新设备信息
-	updateSql := "update device_info set username=?,password=?,hostname=?,vhostname=?,appname=? where streamid=?"
+	updateSql := "update device_info set username=?,password=?,hostname=?,vhostname=?,appname=? where deviceid=?"
 	updateStmt, err := database.Instance().Prepare(updateSql)
 	if err != nil {
 		logger.Log().Error("更新设备失败, %s, %s", utils.JsonString(deviceInfo), err.Error())
@@ -134,7 +133,7 @@ func UpdateDeviceInfo(deviceInfo *message.DeviceInfo) error {
 
 	defer updateStmt.Close()
 	_, err = updateStmt.Exec(deviceInfo.Username, deviceInfo.Password,
-		deviceInfo.Hostname, deviceInfo.StreamId, deviceInfo.VHostName, deviceInfo.AppName)
+		deviceInfo.Hostname, deviceInfo.DeviceId, deviceInfo.VHostName, deviceInfo.AppName)
 
 	if err != nil {
 		logger.Log().Error("更新设备失败, %s, %s", utils.JsonString(deviceInfo), err.Error())
@@ -150,7 +149,7 @@ func QueryDeviceList() ([]message.DeviceInfo, error) {
 		return nil, errors.New("查询设备列表失败,当前数据库未建立连接")
 	}
 
-	stmt, err := database.Instance().Prepare("select streamid,username,hostname,vhostname,appname from device_info order by created desc")
+	stmt, err := database.Instance().Prepare("select deviceid,username,hostname,vhostname,appname from device_info order by created desc")
 	if err != nil {
 		logger.Log().Error("查询设备列表失败, %s", err.Error())
 		return nil, errors.New("查询设备列表失败,请稍后重试")
@@ -163,7 +162,7 @@ func QueryDeviceList() ([]message.DeviceInfo, error) {
 		return nil, errors.New("查询设备列表失败,请稍后重试")
 	}
 
-	var streamid string
+	var deviceid string
 	var username string
 	var hostname string
 	var vhostname string
@@ -171,10 +170,10 @@ func QueryDeviceList() ([]message.DeviceInfo, error) {
 	resultList := []message.DeviceInfo{}
 
 	for rows.Next() {
-		err = rows.Scan(&streamid, &username, &hostname, &vhostname, &appname)
+		err = rows.Scan(&deviceid, &username, &hostname, &vhostname, &appname)
 		if err == nil {
 			deviceInfo := message.DeviceInfo{
-				StreamId:  streamid,
+				DeviceId:  deviceid,
 				Username:  username,
 				Password:  "******",
 				Hostname:  hostname,
@@ -198,7 +197,7 @@ func createDeviceTable() {
 	}
 
 	deviceInfoTableSql := `create table if not exists device_info (
-         streamid  varchar(200) NOT NULL PRIMARY KEY,
+         deviceid  varchar(200) NOT NULL PRIMARY KEY,
          username  varchar(32) NOT NULL,
 		 password  varchar(64) NOT NULL,
 		 hostname  varchar(200) NOT NULL,
