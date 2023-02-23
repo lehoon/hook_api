@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/lehoon/hook_api/v2/library/database"
 	"github.com/lehoon/hook_api/v2/library/logger"
@@ -10,7 +11,6 @@ import (
 )
 
 func init() {
-	createDeviceTable()
 	logger.Log().Info("device service initialized")
 }
 
@@ -20,7 +20,7 @@ func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 		return nil, errors.New("数据库未打开,查询失败")
 	}
 
-	stmt, err := database.Instance().Prepare("select username,password,hostname,vhostname,appname from device_info where deviceid = ?")
+	stmt, err := database.Instance().Prepare("select streamid,username,password,hostname,vhostname,appname from device_info where deviceid = ?")
 	if err != nil {
 		logger.Log().Errorf("查询设备出错,%s", err.Error())
 		return nil, errors.New("查询设备出错,请稍后重试")
@@ -29,12 +29,13 @@ func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 	defer stmt.Close()
 	row := stmt.QueryRow(deviceid)
 
+	var streamid string
 	var username string
 	var password string
 	var hostname string
 	var appname string
 	var vhostname string
-	err = row.Scan(&username, &password, &hostname, &vhostname, &appname)
+	err = row.Scan(&streamid, &username, &password, &hostname, &vhostname, &appname)
 
 	if err != nil {
 		logger.Log().Errorf("查询设备数据失败,%s,%s", deviceid, err.Error())
@@ -43,6 +44,7 @@ func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 
 	return &message.DeviceInfo{
 		DeviceId:  deviceid,
+		StreamId:  streamid,
 		Username:  username,
 		Password:  password,
 		Hostname:  hostname,
@@ -51,13 +53,67 @@ func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 	}, nil
 }
 
+// 查询流最大编号
+func device_streamid_max() (int32, error) {
+	if !database.IsOpen() {
+		return 0, errors.New("查询设备表流序号失败,当前数据库未建立连接")
+	}
+
+	stmt, err := database.Instance().Prepare("select max(cast(streamid as int)) as streamid from device_info")
+	if err != nil {
+		logger.Log().Error("查询设备表流序号失败, %s", err.Error())
+		return 0, errors.New("查询设备表流序号失败,请稍后重试")
+	}
+
+	defer stmt.Close()
+	row := stmt.QueryRow()
+
+	var streamid string
+	err = row.Scan(&streamid)
+
+	if err != nil && strings.Contains(err.Error(), "no rows in result set") {
+		logger.Log().Errorf("生成流序列号失败,未初始化数据,%s", err.Error())
+		return 0, nil
+	}
+
+	if err != nil {
+		return 0, err
+	}
+
+	return string_to_int32(streamid), nil
+}
+
 // 新增device info
 func InsertDeviceInfo(deviceInfo *message.DeviceInfo) error {
 	if !database.IsOpen() {
 		return errors.New("数据库未打开,新增失败")
 	}
+
+	streamid_max, err := device_streamid_max()
+	if err != nil {
+		logger.Log().Errorf("新增设备失败,数据库发送错误, %s,%s", utils.JsonString(deviceInfo), err.Error())
+		return errors.New("新增设备失败,请稍后重试")
+	}
+
+	streamid, err := next_sequece()
+	if err != nil {
+		logger.Log().Errorf("新增设备失败,获取流序列号失败, %s,%s", utils.JsonString(deviceInfo), err.Error())
+		return errors.New("新增设备失败,请稍后重试")
+	}
+
+	streamid_new_int := string_to_int32(streamid)
+
+	if streamid_new_int <= streamid_max {
+		streamid_new_int = streamid_max + 1
+		streamid, err = update_sequence(streamid_new_int)
+		if err != nil {
+			logger.Log().Errorf("新增设备失败,获取流序列号失败, %s,%s", utils.JsonString(deviceInfo), err.Error())
+			return errors.New("新增设备失败,请稍后重试")
+		}
+	}
+
 	//添加新的数据
-	insertSql := `insert into device_info(deviceid,username,password,hostname,vhostname,appname,created) values(?,?,?,?,?,?,datetime('now','localtime'))`
+	insertSql := `insert into device_info(deviceid,streamid,username,password,hostname,vhostname,appname,created) values(?,?,?,?,?,?,?,datetime('now','localtime'))`
 	insertStmt, err := database.Instance().Prepare(insertSql)
 	if err != nil {
 		logger.Log().Errorf("新增设备失败,%s,%s", utils.JsonString(deviceInfo), err.Error())
@@ -65,7 +121,7 @@ func InsertDeviceInfo(deviceInfo *message.DeviceInfo) error {
 	}
 
 	defer insertStmt.Close()
-	_, err = insertStmt.Exec(deviceInfo.DeviceId, deviceInfo.Username, deviceInfo.Password, deviceInfo.Hostname, deviceInfo.VHostName, deviceInfo.AppName)
+	_, err = insertStmt.Exec(deviceInfo.DeviceId, streamid, deviceInfo.Username, deviceInfo.Password, deviceInfo.Hostname, deviceInfo.VHostName, deviceInfo.AppName)
 	if err != nil {
 		logger.Log().Errorf("新增设备数据失败,%s,%s", utils.JsonString(deviceInfo), err.Error())
 		return errors.New("新增设备失败,请稍后重试")
@@ -187,29 +243,4 @@ func QueryDeviceList() ([]message.DeviceInfo, error) {
 	}
 
 	return resultList, nil
-}
-
-// 创建device表
-func createDeviceTable() {
-	if !database.IsOpen() {
-		logger.Log().Info("创建设备数据库失败,当前数据库未建立连接")
-		return
-	}
-
-	deviceInfoTableSql := `create table if not exists device_info (
-         deviceid  varchar(200) NOT NULL PRIMARY KEY,
-         username  varchar(32) NOT NULL,
-		 password  varchar(64) NOT NULL,
-		 hostname  varchar(200) NOT NULL,
-		 vhostname varchar(32) NOT NULL,
-		 appname   varchar(32) NOT NULL,
-         created DATE NOT NULL
-         );
-    `
-
-	_, err := database.Instance().Exec(deviceInfoTableSql)
-	if err != nil {
-		logger.Log().Errorf("创建表结构device_info失败 %v", err)
-		return
-	}
 }

@@ -43,7 +43,7 @@ func PublishDevice(w http.ResponseWriter, r *http.Request) {
 
 	if deviceInfo != nil {
 		logger.Log().Error("新增设备信息失败,数据已存在")
-		result := FailureBizResultWithMessage(OPEARTE_DEVICE_PUBLISH_ERROR, "新增设备信息失败,数据已存在")
+		result := FailureBizResultWithMessage(OPEARTE_DEVICE_PUBLISH_ERROR, "新增设备信息失败,设备编号已存在")
 		render.Respond(w, r, result)
 		return
 	}
@@ -103,7 +103,7 @@ func UpdateDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//根据streamid检查是否存在 存在返回失败信息
-	if service.InsertDeviceInfo(request.DeviceInfo) != nil {
+	if service.UpdateDeviceInfo(request.DeviceInfo) != nil {
 		logger.Log().Error("更新设备请求失败,请稍后重试,%s", utils.JsonString(request.DeviceInfo))
 		result := FailureBizResultWithMessage(OPEARTE_DEVICE_UPDATE_ERROR, "更新设备请求失败,请稍后重试")
 		render.Respond(w, r, result)
@@ -125,4 +125,31 @@ func DeviceList(w http.ResponseWriter, r *http.Request) {
 
 	logger.Log().Info("查询设备列表成功")
 	render.Respond(w, r, SuccessBizResultWithData(resultList))
+}
+
+// 查询设备的播放地址
+func DevicePlayUrl(w http.ResponseWriter, r *http.Request) {
+	deviceId := chi.URLParam(r, "id")
+	if deviceId == "" {
+		render.Respond(w, r, FailureBizResultWithParamError())
+		return
+	}
+
+	//校验流编号在数据库是否已存在
+	deviceInfo, err := service.QueryDeviceByDeviceId(deviceId)
+	if err != nil || deviceInfo == nil {
+		logger.Log().Errorf("查询流播放地址失败, %s, %s", deviceId, err.Error())
+		render.Respond(w, r, FailureBizResultWithStreamNotExists())
+		return
+	}
+
+	streamInfo := message.StreamInfo{
+		StreamId: deviceInfo.StreamId,
+		Username: deviceInfo.Username,
+		Password: deviceInfo.Password,
+		AppName:  deviceInfo.AppName,
+	}
+
+	logger.Log().Infof("查询流播放地址成功, %s", deviceId)
+	render.Respond(w, r, SuccessBizResultWithData(streamInfo.PlayUrl()))
 }

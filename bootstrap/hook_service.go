@@ -7,6 +7,7 @@ import (
 	"github.com/lehoon/hook_api/v2/api"
 	"github.com/lehoon/hook_api/v2/library/net/http"
 	"github.com/lehoon/hook_api/v2/message"
+	"github.com/lehoon/hook_api/v2/service"
 )
 
 type BusinessResult struct {
@@ -16,10 +17,20 @@ type BusinessResult struct {
 }
 
 func main() {
+	test_device_publish()
+}
 
-	for i := 0; i < 100; i++ {
-		device1 := message.DeviceInfo{
-			StreamId: "111",
+func test_device_publish() {
+	index := 0
+	for {
+		if index > 1000 {
+			break
+		}
+
+		id := 100000 + index
+		streamid := fmt.Sprintf("%d", id)
+		device := message.DeviceInfo{
+			DeviceId: streamid,
 			Username: "admin",
 			Password: "Effort@2022",
 			Hostname: "172.17.18.233",
@@ -27,17 +38,10 @@ func main() {
 			AppName: "jinan",
 		}
 
-		rsp, err := http.PostWithBody("http://localhost:9527/notify", device1, "application/json")
-
-		if err != nil {
-			fmt.Printf("%v", err)
-		}
-
-		if rsp != "" {
-			fmt.Printf("%s", rsp)
-		}
-
-		fmt.Printf("\n")
+		fmt.Printf("%v\n", device)
+		rsp, err := http.PostWithBody("http://localhost:9099/api/v1/device/", device, "application/json")
+		fmt.Printf("%s,%v\n", rsp, err)
+		index++
 	}
 }
 
@@ -51,7 +55,7 @@ func test1() {
 	fmt.Printf("%v\n", request)
 
 	device := message.DeviceInfo{
-		StreamId: "1000000004",
+		DeviceId: "1000000004",
 		Username: "admin",
 		Password: "******",
 		Hostname: "172.17.18.233",
@@ -77,7 +81,7 @@ func test1() {
 		id := 100000 + index
 		streamid := fmt.Sprintf("%d", id)
 		device := message.DeviceInfo{
-			StreamId: streamid,
+			DeviceId: streamid,
 			Username: "admin",
 			Password: "Effort@2022",
 			Hostname: "172.17.18.233",
@@ -98,4 +102,43 @@ func test1() {
 	//fmt.Printf("%s\n", string(buf))
 
 	fmt.Printf("%v\n", api.OperateCodeMessage())
+}
+
+func test2() {
+	for i := 0; i < 100; i++ {
+		device1 := message.DeviceInfo{
+			DeviceId: "111",
+			Username: "admin",
+			Password: "Effort@2022",
+			Hostname: "172.17.18.233",
+			//VHostName: "__defaultVhost__",
+			AppName: "jinan",
+		}
+
+		rsp, err := http.PostWithBody("http://localhost:9527/notify", device1, "application/json")
+
+		if err != nil {
+			fmt.Printf("%v", err)
+		}
+
+		if rsp != "" {
+			fmt.Printf("%s", rsp)
+		}
+
+		fmt.Printf("\n")
+	}
+}
+
+// 测试流序号问题
+func test3() {
+	for i := 0; i < 100; i++ {
+		sequence_no, err := service.NextSequence()
+
+		if err != nil {
+			fmt.Printf("%s\n", err.Error())
+			continue
+		}
+
+		fmt.Printf("%s\n", sequence_no)
+	}
 }

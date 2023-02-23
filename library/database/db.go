@@ -18,13 +18,13 @@ var (
 
 func init() {
 	var err error = nil
-	dbInstance, err = sql.Open("sqlite3", "hook_api.db")
+	dbInstance, err = sql.Open("sqlite3", "storage.db")
 	if err != nil {
 		logger.Log().Errorf("打开数据库文件失败, %v", err.Error())
 	}
 
 	dbOpenState = true
-	logger.Log().Info("打开数据库hook_api.db成功")
+	logger.Log().Info("打开数据库storage.db成功")
 }
 
 func IsOpen() bool {

@@ -28,6 +28,11 @@ func StreamList(w http.ResponseWriter, r *http.Request) {
 	render.Respond(w, r, SuccessBizResultWithData(resultList))
 }
 
+// 检查流是否可以播放
+func StreamCanPlay(w http.ResponseWriter, r *http.Request) {
+
+}
+
 // 检查流是否存在
 func StreamIsOnline(w http.ResponseWriter, r *http.Request) {
 	streamId := chi.URLParam(r, "streamId")

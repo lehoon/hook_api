@@ -72,6 +72,7 @@ func Routes() http.Handler {
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", api.QueryDeviceInfo)
 			r.Delete("/", api.DeleteDevice)
+			r.Get("/stream/url", api.DevicePlayUrl)
 		})
 	})
 

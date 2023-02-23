@@ -75,6 +75,7 @@ func (a *KeepAliveReportBind) Bind(r *http.Request) error {
 // 设备信息
 type DeviceInfo struct {
 	DeviceId  string `json:"deviceId"`
+	StreamId  string `json:"-"`
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	Hostname  string `json:"hostname"`
@@ -155,7 +156,8 @@ func (d *StreamInfo) CloseKey() string {
 func (d *StreamInfo) PlayUrl() []string {
 	var result []string
 	result = append(result, "rtsp://"+config.GetRestAddress()+"/"+d.AppName+"/"+d.StreamId)
-	result = append(result, "http://"+config.GetRestAddress()+"/live/"+d.StreamId+".live.flv")
+	result = append(result, "http://"+config.GetRestAddress()+"/"+d.AppName+"/"+d.StreamId+".live.flv")
+	result = append(result, "ws://"+config.GetRestAddress()+"/"+d.AppName+"/"+d.StreamId+".live.flv")
 	return result
 }
 
