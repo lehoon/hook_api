@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"net/http"
 
 	"github.com/go-chi/render"
@@ -10,8 +11,10 @@ import (
 
 // 服务器启动报告，可以用于服务器的崩溃重启事件监听
 func ServerStartupReport(w http.ResponseWriter, r *http.Request) {
-	//buf, _ := io.ReadAll(r.Body)
-	//logger.Log().Infof("服务器启动报告:%s", string(buf))
+	buf, _ := io.ReadAll(r.Body)
+	logger.Log().Infof("服务器启动报告:%s", string(buf))
+
+	//service.StreamServerOperate()
 	logger.Log().Info("服务器启动报告")
 	render.Respond(w, r, SuccessBizResult())
 }
@@ -25,25 +28,29 @@ func KeepAliveReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Log().Info("server保活上报")
+	buf, _ := io.ReadAll(r.Body)
+	logger.Log().Infof("server保活上报:%s", string(buf))
 	//render.Render(w, r, SuccessBizResult())
 	render.Respond(w, r, SuccessBizResult())
 }
 
 // 播放器或推流器使用流量事件
 func FlowReport(w http.ResponseWriter, r *http.Request) {
-	logger.Log().Info("播放器或推流器使用流量事件")
+	buf, _ := io.ReadAll(r.Body)
+	logger.Log().Info("播放器或推流器使用流量事件:%s", string(buf))
 	render.Respond(w, r, SuccessBizResult())
 }
 
 // 发送rtp(startSendRtp)被动关闭时回调
 func RtpCloseReport(w http.ResponseWriter, r *http.Request) {
-	logger.Log().Info("发送rtp(startSendRtp)被动关闭时回调")
+	buf, _ := io.ReadAll(r.Body)
+	logger.Log().Infof("发送rtp(startSendRtp)被动关闭时回调:%s", string(buf))
 	render.Respond(w, r, SuccessBizResult())
 }
 
 // rtp server 超时未收到数据
 func RtpTimeoutReport(w http.ResponseWriter, r *http.Request) {
-	logger.Log().Info("rtp server 超时未收到数据")
+	buf, _ := io.ReadAll(r.Body)
+	logger.Log().Infof("rtp server 超时未收到数据:%s", string(buf))
 	render.Respond(w, r, SuccessBizResult())
 }

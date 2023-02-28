@@ -64,7 +64,7 @@ func (client *DefaultTcpClient) Connect(timeout uint16) error {
 	client.conn = conn
 	client.connFlag = ConnectDone
 
-	if client.eventCallback != nil && client.eventCallback.OnConnect != nil {
+	if client.eventCallback != nil {
 		client.eventCallback.OnConnect()
 	}
 
@@ -114,7 +114,7 @@ func (client *DefaultTcpClient) Send(buffer []byte, length int) (int, error) {
 		}
 	}
 
-	if client.eventCallback != nil && client.eventCallback.OnSend != nil {
+	if client.eventCallback != nil {
 		client.eventCallback.OnSend(idx)
 	}
 
@@ -132,20 +132,20 @@ func (client *DefaultTcpClient) DisConnect() error {
 		return err
 	}
 
-	if client.eventCallback != nil && client.eventCallback.OnDisConnect != nil {
+	if client.eventCallback != nil {
 		client.eventCallback.OnDisConnect()
 	}
 	return nil
 }
 
 func (client *DefaultTcpClient) trigerOnMessage(buffer []byte, length int) {
-	if client.eventCallback != nil && client.eventCallback.OnDisConnect != nil {
+	if client.eventCallback != nil {
 		client.eventCallback.OnMessage(buffer, length)
 	}
 }
 
 func (client *DefaultTcpClient) trigerOnDisConnect() {
-	if client.eventCallback != nil && client.eventCallback.OnDisConnect != nil {
+	if client.eventCallback != nil {
 		client.eventCallback.OnDisConnect()
 	}
 
@@ -153,14 +153,19 @@ func (client *DefaultTcpClient) trigerOnDisConnect() {
 }
 
 func (client *DefaultTcpClient) trigerOnClose() {
-	if client.eventCallback != nil && client.eventCallback.OnClose != nil {
+	if client.eventCallback != nil {
 		client.eventCallback.OnClose()
 	}
 }
 
 // 远程服务是否在线
 func IsOnline(address string) error {
-	conn, err := net.DialTimeout("tcp", address, time.Second*time.Duration(3000))
+	return IsOnlineWithTimeout(address, 3000)
+}
+
+// 检查远程服务是否在线
+func IsOnlineWithTimeout(address string, timeout uint16) error {
+	conn, err := net.DialTimeout("tcp", address, time.Second*time.Duration(timeout))
 
 	if err != nil {
 		logger.Log().Errorf("连接远程服务器%s失败%v", address, err)

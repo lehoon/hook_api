@@ -33,10 +33,6 @@ func next_sequece() (string, error) {
 		sequence_no = sequence_no1
 	}
 
-	if sequence_no == DEFAULT_STREAM_SEQUENCE_ID {
-		create_sequence(sequence_no)
-	}
-
 	//写入数据库
 	return update_sequence(sequence_no)
 }
@@ -45,7 +41,7 @@ func create_sequence(sequence_no int32) error {
 	updateSql := "insert into stream_sequence(sequenceid) values(?)"
 	updateStmt, err := database.Instance().Prepare(updateSql)
 	if err != nil {
-		logger.Log().Error("创建流序号表失败, %d, %s", sequence_no, err.Error())
+		logger.Log().Errorf("创建流序号表失败, %d, %s", sequence_no, err.Error())
 		return errors.New("创建流序号表失败,请稍后重试")
 	}
 
@@ -53,7 +49,7 @@ func create_sequence(sequence_no int32) error {
 	_, err = updateStmt.Exec(sequence_no)
 
 	if err != nil {
-		logger.Log().Error("创建流序号表失败, %d, %s", sequence_no, err.Error())
+		logger.Log().Errorf("创建流序号表失败, %d, %s", sequence_no, err.Error())
 		return errors.New("创建流序号表失败,请稍后重试")
 	}
 
@@ -66,7 +62,7 @@ func update_sequence(sequence_no int32) (string, error) {
 	updateSql := "update stream_sequence set sequenceid=? where sequenceid=?"
 	updateStmt, err := database.Instance().Prepare(updateSql)
 	if err != nil {
-		logger.Log().Error("更新流序号表失败, %d, %s", sequence_no, err.Error())
+		logger.Log().Errorf("更新流序号表失败, %d, %s", sequence_no, err.Error())
 		return "", errors.New("更新流序号表失败,请稍后重试")
 	}
 
@@ -78,7 +74,7 @@ func update_sequence(sequence_no int32) (string, error) {
 		return "", errors.New("更新流序号表失败,请稍后重试")
 	}
 
-	logger.Log().Error("更新流序号表成功, %d", sequence_no_new)
+	logger.Log().Errorf("更新流序号表成功%d", sequence_no_new)
 	return int32_to_string(sequence_no_new), nil
 }
 
@@ -88,7 +84,7 @@ func update_sequence_v1(sequence_no, sequence_no_old int32) (string, error) {
 	updateSql := "update stream_sequence set sequenceid=? where sequenceid=?"
 	updateStmt, err := database.Instance().Prepare(updateSql)
 	if err != nil {
-		logger.Log().Error("更新流序号表失败, %d, %d, %s", sequence_no, sequence_no_old, err.Error())
+		logger.Log().Errorf("更新流序号表失败, %d, %d, %s", sequence_no, sequence_no_old, err.Error())
 		return "", errors.New("更新流序号表失败,请稍后重试")
 	}
 
@@ -96,11 +92,11 @@ func update_sequence_v1(sequence_no, sequence_no_old int32) (string, error) {
 	_, err = updateStmt.Exec(sequence_no, sequence_no_old)
 
 	if err != nil {
-		logger.Log().Error("更新流序号表失败, %d, %d, %s", sequence_no, sequence_no_old, err.Error())
+		logger.Log().Errorf("更新流序号表失败, %d, %d, %s", sequence_no, sequence_no_old, err.Error())
 		return "", errors.New("更新流序号表失败,请稍后重试")
 	}
 
-	logger.Log().Error("更新流序号表成功, %d, %d", sequence_no, sequence_no_old)
+	logger.Log().Errorf("更新流序号表成功, %d, %d", sequence_no, sequence_no_old)
 	return int32_to_string(sequence_no), nil
 }
 
@@ -122,8 +118,7 @@ func current_sequence() (string, error) {
 	err = row.Scan(&sequenceid)
 
 	logger.Log().Infof("查询到的流序列为%s", sequenceid)
-
-	strings.TrimSpace(sequenceid)
+	sequenceid = strings.TrimSpace(sequenceid)
 
 	if len(sequenceid) > 0 {
 		return sequenceid, nil
@@ -138,16 +133,15 @@ func current_sequence() (string, error) {
 	return "", err
 }
 
-// reapir stream sequence table
-func repair_stream_sequence_table() {
+func count_stream_sequence_table() (int, error) {
 	if !database.IsOpen() {
-		return
+		return 0, errors.New("数据库为打开")
 	}
 
 	stmt, err := database.Instance().Prepare("select count(*) as totalcount from stream_sequence")
 	if err != nil {
 		logger.Log().Errorf("检查视频流序列号表失败,%s", err.Error())
-		return
+		return 0, err
 	}
 
 	defer stmt.Close()
@@ -157,10 +151,29 @@ func repair_stream_sequence_table() {
 	err = row.Scan(&totalcount)
 
 	if err != nil {
+		return 0, err
+	}
+
+	return totalcount, nil
+}
+
+// reapir stream sequence table
+func repair_stream_sequence_table() {
+	if !database.IsOpen() {
 		return
 	}
 
-	if totalcount <= 1 {
+	totalcount, err := count_stream_sequence_table()
+	if err != nil {
+		return
+	}
+
+	if totalcount == 0 {
+		create_sequence(DEFAULT_STREAM_SEQUENCE_ID)
+		return
+	}
+
+	if totalcount == 1 {
 		return
 	}
 

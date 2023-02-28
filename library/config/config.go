@@ -24,6 +24,7 @@ type Server struct {
 	Url     string `yaml:"url"`
 	Secret  string `yaml:"secret"`
 	Address string `yaml:"address"`
+	PlayUrl string `yaml:"playurl"`
 }
 
 type Logger struct {
@@ -69,6 +70,10 @@ func GetServerSecret() string {
 	return config.Server.Secret
 }
 
+func GetServerPlayUrl() string {
+	return config.Server.PlayUrl
+}
+
 func GetLoggerLevel() int {
 	return config.Logger.Level
 }
@@ -98,7 +103,7 @@ func GetLoggerCompress() bool {
 
 func loadConfig() {
 	viper.AddConfigPath(".")
-	viper.SetConfigName("hook.yaml")
+	viper.SetConfigName("config.yaml")
 	viper.SetConfigType("yaml")
 	err := viper.ReadInConfig()
 

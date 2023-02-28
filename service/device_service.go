@@ -20,7 +20,7 @@ func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 		return nil, errors.New("数据库未打开,查询失败")
 	}
 
-	stmt, err := database.Instance().Prepare("select streamid,username,password,hostname,vhostname,appname from device_info where deviceid = ?")
+	stmt, err := database.Instance().Prepare("select streamid,username,password,protocol,hostname,port,vhostname,appname from device_info where deviceid = ?")
 	if err != nil {
 		logger.Log().Errorf("查询设备出错,%s", err.Error())
 		return nil, errors.New("查询设备出错,请稍后重试")
@@ -32,10 +32,12 @@ func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 	var streamid string
 	var username string
 	var password string
+	var protocol uint8
 	var hostname string
+	var port uint16
 	var appname string
 	var vhostname string
-	err = row.Scan(&streamid, &username, &password, &hostname, &vhostname, &appname)
+	err = row.Scan(&streamid, &username, &password, &protocol, &hostname, &port, &vhostname, &appname)
 
 	if err != nil {
 		logger.Log().Errorf("查询设备数据失败,%s,%s", deviceid, err.Error())
@@ -47,16 +49,47 @@ func QueryDeviceByDeviceId(deviceid string) (*message.DeviceInfo, error) {
 		StreamId:  streamid,
 		Username:  username,
 		Password:  password,
+		Protocol:  protocol,
 		Hostname:  hostname,
+		Port:      port,
 		VHostName: vhostname,
 		AppName:   appname,
 	}, nil
+}
+
+// 查询设备表数量
+func count_device_table() int {
+	if !database.IsOpen() {
+		return 0
+	}
+
+	stmt, err := database.Instance().Prepare("select count(*) as totalcount from device_info")
+	if err != nil {
+		logger.Log().Errorf("检查设备表失败,%s", err.Error())
+		return 0
+	}
+
+	defer stmt.Close()
+	row := stmt.QueryRow()
+
+	var totalcount int
+	err = row.Scan(&totalcount)
+
+	if err != nil {
+		return 0
+	}
+
+	return totalcount
 }
 
 // 查询流最大编号
 func device_streamid_max() (int32, error) {
 	if !database.IsOpen() {
 		return 0, errors.New("查询设备表流序号失败,当前数据库未建立连接")
+	}
+
+	if count_device_table() == 0 {
+		return 0, nil
 	}
 
 	stmt, err := database.Instance().Prepare("select max(cast(streamid as int)) as streamid from device_info")
@@ -112,8 +145,14 @@ func InsertDeviceInfo(deviceInfo *message.DeviceInfo) error {
 		}
 	}
 
+	if deviceInfo.Protocol == 0 {
+		deviceInfo.Protocol = message.STREAM_TRANSPORT_PROTOCOL_RTSP
+	}
+
+	deviceInfo.Port = message.GetProtocolPort(deviceInfo.Protocol, deviceInfo.Port)
+
 	//添加新的数据
-	insertSql := `insert into device_info(deviceid,streamid,username,password,hostname,vhostname,appname,created) values(?,?,?,?,?,?,?,datetime('now','localtime'))`
+	insertSql := `insert into device_info(deviceid,streamid,username,password,protocol,hostname,port,vhostname,appname,created) values(?,?,?,?,?,?,?,?,?,datetime('now','localtime'))`
 	insertStmt, err := database.Instance().Prepare(insertSql)
 	if err != nil {
 		logger.Log().Errorf("新增设备失败,%s,%s", utils.JsonString(deviceInfo), err.Error())
@@ -121,7 +160,8 @@ func InsertDeviceInfo(deviceInfo *message.DeviceInfo) error {
 	}
 
 	defer insertStmt.Close()
-	_, err = insertStmt.Exec(deviceInfo.DeviceId, streamid, deviceInfo.Username, deviceInfo.Password, deviceInfo.Hostname, deviceInfo.VHostName, deviceInfo.AppName)
+	_, err = insertStmt.Exec(deviceInfo.DeviceId, streamid, deviceInfo.Username, deviceInfo.Password,
+		deviceInfo.Protocol, deviceInfo.Hostname, deviceInfo.Port, deviceInfo.VHostName, deviceInfo.AppName)
 	if err != nil {
 		logger.Log().Errorf("新增设备数据失败,%s,%s", utils.JsonString(deviceInfo), err.Error())
 		return errors.New("新增设备失败,请稍后重试")
@@ -205,7 +245,7 @@ func QueryDeviceList() ([]message.DeviceInfo, error) {
 		return nil, errors.New("查询设备列表失败,当前数据库未建立连接")
 	}
 
-	stmt, err := database.Instance().Prepare("select deviceid,username,hostname,vhostname,appname from device_info order by created desc")
+	stmt, err := database.Instance().Prepare("select deviceid,username,protocol,hostname,port,vhostname,appname from device_info order by created desc")
 	if err != nil {
 		logger.Log().Error("查询设备列表失败, %s", err.Error())
 		return nil, errors.New("查询设备列表失败,请稍后重试")
@@ -220,19 +260,23 @@ func QueryDeviceList() ([]message.DeviceInfo, error) {
 
 	var deviceid string
 	var username string
+	var protocol uint8
 	var hostname string
+	var port uint16
 	var vhostname string
 	var appname string
 	resultList := []message.DeviceInfo{}
 
 	for rows.Next() {
-		err = rows.Scan(&deviceid, &username, &hostname, &vhostname, &appname)
+		err = rows.Scan(&deviceid, &username, &protocol, &hostname, &port, &vhostname, &appname)
 		if err == nil {
 			deviceInfo := message.DeviceInfo{
 				DeviceId:  deviceid,
 				Username:  username,
 				Password:  "******",
+				Protocol:  protocol,
 				Hostname:  hostname,
+				Port:      port,
 				VHostName: vhostname,
 				AppName:   appname,
 			}

@@ -30,7 +30,23 @@ func StreamList(w http.ResponseWriter, r *http.Request) {
 
 // 检查流是否可以播放
 func StreamCanPlay(w http.ResponseWriter, r *http.Request) {
+	//检查流是否已经配置
+	streamId := chi.URLParam(r, "id")
+	if streamId == "" {
+		render.Respond(w, r, FailureBizResultWithParamError())
+		return
+	}
 
+	//校验流编号在数据库是否已存在
+	streamInfo, err := service.QueryStreamByStreamId(streamId)
+	if err != nil || streamInfo == nil {
+		logger.Log().Errorf("检查流是否可以播放失败,未找到该流编号关联的数据, %s, %s", streamId, err.Error())
+		render.Respond(w, r, FailureBizResultWithStreamNotExists())
+		return
+	}
+
+	logger.Log().Infof("检查流是否可以播放成功, %s", streamId)
+	render.Respond(w, r, SuccessBizResultWithData(check_stream_is_available(streamInfo)))
 }
 
 // 检查流是否存在
@@ -101,19 +117,29 @@ func StreamOpen(w http.ResponseWriter, r *http.Request) {
 
 	request := &message.StreamNotFoundBind{
 		StreamNotFoundMessage: &message.StreamNotFoundMessage{
-			App:    "",
-			Vhost:  "",
-			Stream: streamId,
+			App:      "",
+			Vhost:    "",
+			StreamId: streamId,
 		},
 	}
 
 	err = invokePullStream(request)
 
 	if err != nil {
-		logger.Log().Errorf("打开流成功失败, %s, %s", request.Stream, err.Error())
+		logger.Log().Errorf("打开流成功失败, %s, %s", request.StreamId, err.Error())
 		render.Render(w, r, FailureBizResultWithMessage(OPEARTE_STREAM_NOT_EXITS, err.Error()))
 		return
 	}
+
+	// 记录流操作记录
+	service.StreamOperateHistory(&service.StreamOperateModel{
+		DeviceId: streamInfo.DeviceId,
+		StreamId: streamInfo.StreamId,
+		ServerId: streamInfo.AppName,
+		ClientId: "",
+		Opcode:   "open",
+		Message:  "打开流播放功能",
+	})
 
 	logger.Log().Infof("打开流成功, %s", streamId)
 	render.Respond(w, r, SuccessBizResult())
@@ -133,7 +159,7 @@ func StreamClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go invokeStreamClose(streamId)
+	invokeStreamClose(streamId)
 	logger.Log().Infof("发送关闭流请求完成, %s", streamId)
 	render.Respond(w, r, SuccessBizResult())
 }
@@ -147,8 +173,10 @@ func StreamNotFound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Log().Infof("播放视频请求参数:%s", request.JsonString())
+
 	if err := tcp.IsOnline(config.GetRestAddress()); err != nil {
-		logger.Log().Errorf("发送拉流请求失败, %s, %s", request.Stream, err.Error())
+		logger.Log().Errorf("发送拉流请求失败, %s, %s", request.JsonString(), err.Error())
 		render.Render(w, r, FailureBizResultWithServiceNotOnline())
 		return
 	}
@@ -156,12 +184,12 @@ func StreamNotFound(w http.ResponseWriter, r *http.Request) {
 	//请求拉流
 	err := invokePullStream(request)
 	if err != nil {
-		logger.Log().Errorf("发送拉流请求失败, %s, %s", request.Stream, err.Error())
+		logger.Log().Errorf("发送拉流请求失败, %s, %s", request.StreamId, err.Error())
 		render.Render(w, r, FailureBizResultWithMessage(OPEARTE_STREAM_NOT_EXITS, err.Error()))
 		return
 	}
 
-	logger.Log().Infof("要播放的视频流[%s]不存在,发起拉流请求成功", request.Stream)
+	logger.Log().Infof("要播放的视频流[%s]不存在,发起拉流请求成功", request.StreamId)
 	render.Respond(w, r, SuccessBizResult())
 }
 
@@ -180,14 +208,14 @@ func StreamNoneReader(w http.ResponseWriter, r *http.Request) {
 // 发送拉流请求
 func invokePullStream(request *message.StreamNotFoundBind) error {
 	//根据stream 查询设备信息
-	streamInfo, err := service.QueryStreamByStreamId(request.Stream)
+	streamInfo, err := service.QueryStreamByStreamId(request.StreamId)
 	if err != nil || streamInfo == nil {
-		logger.Log().Errorf("发送拉流请求失败, %s, %s", request.Stream, err.Error())
+		logger.Log().Errorf("发送拉流请求失败, %s, %s", request.StreamId, err.Error())
 		return errors.New("发送拉流请求失败,未找到流的配置信息")
 	}
 
 	if len(request.App) != 0 && strings.Compare(request.App, streamInfo.AppName) != 0 {
-		logger.Log().Errorf("发送拉流请求失败, 流配置信息和数据库配置信息不一致%s", request.Stream)
+		logger.Log().Errorf("发送拉流请求失败, 流配置信息和数据库配置信息不一致%s", request.StreamId)
 		return errors.New("发送拉流请求失败,未找到流的配置信息")
 	}
 
@@ -203,8 +231,17 @@ func invokePullStream(request *message.StreamNotFoundBind) error {
 		return errors.New("发送拉流请求失败,网络请求失败")
 	}
 
-	logger.Log().Infof("发起拉流请求,%s", builder.String())
-	logger.Log().Infof("发送拉流请求,接收到响应报文:%s", rsp)
+	// 记录流操作记录
+	service.StreamOperateHistory(&service.StreamOperateModel{
+		DeviceId: streamInfo.DeviceId,
+		StreamId: streamInfo.StreamId,
+		ServerId: streamInfo.AppName,
+		ClientId: "",
+		Opcode:   "pull",
+		Message:  "拉流播放",
+	})
+
+	logger.Log().Infof("发起拉流请求,%s,接收到响应报文:%s", builder.String(), rsp)
 	return nil
 }
 
@@ -228,6 +265,16 @@ func invokeStreamClose(streamId string) {
 	if err != nil {
 		logger.Log().Errorf("发送关闭流请求失败,%s", err.Error())
 	}
+
+	// 记录流操作记录
+	service.StreamOperateHistory(&service.StreamOperateModel{
+		DeviceId: streamInfo.DeviceId,
+		StreamId: streamInfo.StreamId,
+		ServerId: streamInfo.AppName,
+		ClientId: "",
+		Opcode:   "close",
+		Message:  "打开流播放功能",
+	})
 
 	logger.Log().Infof("发送关闭流请求,rsp=%s", rsp)
 }
@@ -261,4 +308,15 @@ func invokeStreamIsOnline(streamId string) (bool, error) {
 
 	logger.Log().Infof("发送查询流是否在线请求,接收到响应报文:%s", rsp)
 	return request.Online, nil
+}
+
+func check_stream_is_available(stream *message.StreamInfo) bool {
+	//检查协议是否支持
+	if stream.Protocol != message.STREAM_TRANSPORT_PROTOCOL_RTSP {
+		return false
+	}
+
+	remote_host := stream.Hostname + ":" + string(rune(stream.Port))
+	err := tcp.IsOnline(remote_host)
+	return err == nil
 }

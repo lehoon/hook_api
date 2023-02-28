@@ -1,0 +1,21 @@
+daemon:
+  pid: daemon.pid
+  log: daemon.log
+
+server:
+  url: http://localhost/index/api/
+  secret: 035c73f7-bb6b-4889-a715-d9eb2d1925cc
+  address: 127.0.0.1:80
+  playurl: 127.0.0.1
+
+local:
+  address: 0.0.0.0:9099
+
+logger:
+  maxSize: 32
+  maxAge: 7
+  maxBackup: 30
+  compress: false
+  level: 0
+  serviceName: hook_api
+  logPath: ./logs/hook_api.log
